@@ -1,0 +1,9 @@
+*.mp4
+*.jpg
+*.jpeg
+pics/*
+*.iml
+*.png
+*.pyc
+venv3/*
+.idea/*
