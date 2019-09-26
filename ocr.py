@@ -3,7 +3,7 @@ import pytesseract
 
 #Maybe implement splitting image to make first part text and second int
 def to_text(image):
-    config = ("-l eng --oem 1 --psm 7 tessedit_char_whitelist= ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    config = ("-l eng --oem 1 --psm 7 tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
     try:
         data = pytesseract.image_to_data(image, config=config)
         parsed = data.split('\n')
@@ -17,18 +17,11 @@ def to_text(image):
                 conf = (conf*float(row[10])*0.01)
                 text += row[11]
                 text += " "
+        out_text = ""
 
-
-        # conf, text = parsed[-2:]
-        # return [int(conf), str(text.rstrip(")"))]
-        out_text = "Conf: %s | %s" % (conf, text.rstrip(") "))
-
-        # if conf > 0.3:
-        #     out_text = "Conf: %s | %s"%(conf, text)
-        # else:
-        #     out_text = "Conf: %s | NaN"% conf
+        if conf > 0.55 and len(text) > 4:
+            out_text = "Conf: %s | %s" % (conf, text.rstrip(") "))
 
         return out_text
-        # return [89, "LoL"]
     except:
-        return "Conf: 0.0 | NaN"
+        return

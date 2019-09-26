@@ -1,14 +1,15 @@
 import cv2
 import argparse
 import numpy as np
-import math
+import math, sys
 from ocr import to_text
+from moviepy.editor import VideoFileClip
 
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-i", "--image", type=str, required=False, help="Path to image")
-ap.add_argument("-m", "--multiple", type=str, required=False, help="Path to folder for multiple "
-                                                                   "images")
+ap.add_argument("-m", "--multiple", type=str, required=False, help="Path to folder for multiple images")
+ap.add_argument("-v", "--video", type=str, required=False, help="Path to video")
 args = vars(ap.parse_args())
 
 
@@ -38,10 +39,18 @@ class Character:
         self.char = is_char(self)
 
 
+# def is_char(char):
+#     if (0.00005*char.img_area) < char.area < (0.0007*char.img_area) \
+#             and (0.0005*char.img_width) < char.w < (0.06*char.img_width) \
+#             and (0.012*char.img_height) < char.h < (0.03*char.img_height) \
+#             and 0.2 < char.aspectRatio < 0.9:
+#         return True
+#     else:
+#         return False
 def is_char(char):
-    if (0.00005*char.img_area) < char.area < (0.0007*char.img_area) \
-            and (0.0005*char.img_width) < char.w < (0.06*char.img_width) \
-            and (0.012*char.img_height) < char.h < (0.03*char.img_height) \
+    if (0.00005*char.img_area) < char.area < (0.0014*char.img_area) \
+            and (0.0005*char.img_width) < char.w < (0.11*char.img_width) \
+            and (0.012*char.img_height) < char.h < (0.09*char.img_height) \
             and 0.2 < char.aspectRatio < 0.9:
         return True
     else:
@@ -99,7 +108,11 @@ def region_of_interest(img, vertices):
 
 def process_image(image_in):
     # Split up image to get raw values
-    hsv = cv2.cvtColor(image_in, cv2.COLOR_BGR2HSV)
+    if args['video']:
+        hsv = cv2.cvtColor(image_in, cv2.COLOR_RGB2HSV)
+    else:
+        hsv = cv2.cvtColor(image_in, cv2.COLOR_BGR2HSV)
+
     _, _, value = cv2.split(hsv)
 
     # Kernel to morph picture
@@ -163,7 +176,6 @@ def adjeacent(characters):
             if (c1.img_width*0.01) < x_delta < (c1.img_width*0.05) \
                 and (c1.img_height * 0.0) < y_delta < (c1.img_height * 0.01) \
                     and 0.6 < height_ratio < 1.3:
-                out.append(c2)
                 related.append((i1, i2))
 
     # WIP
@@ -197,7 +209,7 @@ def adjeacent(characters):
         min_y = 9999
 
         if 6 <= len(group) <= 8:
-            print(len(group))
+            # print(len(group))
             for item in group:
                 char = characters[item]
 
@@ -211,8 +223,13 @@ def adjeacent(characters):
                     min_y = char.y
 
             ratio = abs(float(max_x-min_x)/float(max_y-min_y))
-            if 3.4 < ratio < 5.4:
-                return list_pick(group, characters)
+            # print(ratio)
+            # if 3.4 < ratio < 5.4:
+            if 2.5 < ratio < 7.0:
+                out = list_pick(group, characters)
+                return out
+    if not out:
+        return out
 
 
 def object_to_cnts(contours):
@@ -305,34 +322,52 @@ def bounding_box(points):
 
 # Main action starts here!
 # setup
-image_in_scale = 0.3
-im_show_scale = 0.8
 
 
-images = []
-if args["image"]:
-    images = [args["image"]]
-elif args["multiple"]:
-    folder_path = args["multiple"]
-    onlyfiles = [f for f in sorted(listdir(folder_path)) if isfile(join(folder_path, f))]
-    for file in onlyfiles:
-        images.append("%s/%s" % (args["multiple"], file))
 
-for i in images:
+def toggle_images(key):
+    global time_clip, show, time_frame, duration
+    # print(time_clip)
+    if key == 83:
+        time_clip += time_frame
+    elif key == 81:
+        time_clip -= time_frame
+
+    if (time_clip >= (duration-time_frame)):
+        time_clip = 0
+        print("Reached end of file!")
+    if key == 116:
+        print(time_clip)
+    if key == 113:
+        show = False
+        return
+
+    sys.stdout.flush()
+
+
+def show_processed(image_raw, i):
     # Process
-    image_raw = cv2.imread(i)
     resized = resize(image_raw, image_in_scale)
 
     height = resized.shape[0]
     width = resized.shape[1]
-    region_of_interest_vertices = [
-        (width*0, height*0.5),
-        (width*1, height*0.5),
-        (width*1, height*1),
-        (width*0, height*1)
-    ]
+    if args['video']:
+        region_of_interest_vertices = [
+            (width*0, height*0.2),
+            (width*1, height*0.2),
+            (width*1, height*1),
+            (width*0, height*1)
+        ]
+    else:
+        region_of_interest_vertices = [
+            (width*0, height*0.5),
+            (width*1, height*0.5),
+            (width*1, height*1),
+            (width*0, height*1)
+        ]
 
     thresh = process_image(resized)
+
 
     regionalized_image = region_of_interest(thresh, np.array(
         [region_of_interest_vertices], np.int32),)
@@ -342,26 +377,68 @@ for i in images:
     contours_image = np.zeros((height, width, 3), dtype=np.uint8)
     test_image = np.zeros((height, width, 3), dtype=np.uint8)
 
-    cv2.drawContours(contours_image, raw_contours, -1, (255, 255, 255))
+    # cv2.drawContours(contours_image, raw_contours, -1, (255, 255, 255))
     # cv2.imshow("Contours", resize(contours_image, im_show_scale))
 
     characters_full = characters(raw_contours, regionalized_image.shape)
     # print(len(characters_full))
+    text = ""
     if len(characters_full) > 0:
         adjeacent_characters = adjeacent(characters_full)
-        adjeacent_characters_isolated = object_to_cnts(adjeacent_characters)
-        shape = bounding_shape(adjeacent_characters)
-        plate_img, pts, cropped_shape = crop_plate(resized, shape, 0.05)
+        if len(adjeacent_characters) > 0:
+            adjeacent_characters_isolated = object_to_cnts(adjeacent_characters)
+            cv2.drawContours(contours_image, adjeacent_characters_isolated, -1, (255, 255, 255))
+            cv2.imshow("Contours", resize(contours_image, im_show_scale))
 
-        if plate_img.shape[0] > 2 and plate_img.shape[1] > 4:
-            plate_img = straighten_plate(cropped_shape, plate_img)
-            cv2.imshow("Plate | %s" % i, plate_img)
+            shape = bounding_shape(adjeacent_characters)
+            plate_img, pts, cropped_shape = crop_plate(resized, shape, 0.05)
 
-        text = to_text(plate_img)
-        print("%s|%s" % (i, text))
-        cv2.drawContours(resized, [pts], -1, (0, 255, 0), 2)
+            if plate_img.shape[0] > 2 and plate_img.shape[1] > 4:
+                plate_img = straighten_plate(cropped_shape, plate_img)
+                cv2.imshow("Plate | %s" % i, plate_img)
 
+            text = to_text(plate_img)
+            cv2.drawContours(resized, [pts], -1, (0, 255, 0), 2)
+    if args['video']:
+        resized = resized[...,::-1]
     cv2.imshow("Orig | %s" % i, resize(resized, im_show_scale))
+    if text != "":
+        print(text)
+
+if args['video']:
+    source = VideoFileClip(args['video'], fps_source="fps")
+    duration = source.duration
+    print("Duration: " + str(duration))
+    time_frame = 0.2
+    time_clip = 0
 
 
-cv2.waitKey(0)
+if args['video']:
+    image_in_scale = 0.7
+    im_show_scale = 1
+    show_processed(source.get_frame(time_clip), args["video"])
+    show = True
+    while show:
+        key = cv2.waitKey(0)
+        if not key == -1:
+            toggle_images(key)
+            show_processed(source.get_frame(time_clip), args["video"])
+
+elif args["image"]:
+    img = cv2.imread(args["image"])
+    ratio = 1920.0/float(img.shape[1])
+    image_in_scale = 0.7
+    im_show_scale = ratio*0.6
+    show_processed(img, args["image"])
+    cv2.waitKey(0)
+
+elif args["multiple"]:
+    folder_path = args["multiple"]
+    onlyfiles = [f for f in sorted(listdir(folder_path)) if isfile(join(folder_path, f))]
+    for file in onlyfiles:
+        img = cv2.imread("%s/%s" % (args["multiple"], file))
+        ratio = 1920.0/float(img.shape[1])
+        image_in_scale = 0.6
+        im_show_scale = ratio*0.6
+        show_processed(img, file)
+    cv2.waitKey(0)

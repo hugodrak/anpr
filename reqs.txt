@@ -2,3 +2,4 @@ numpy==1.17.2
 opencv-python==4.1.1.26
 imutils==0.5.3
 pytesseract==0.3.0
+moviepy
